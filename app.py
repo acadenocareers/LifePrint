@@ -1,5 +1,5 @@
 # --------------------------------------------------
-# Force TensorFlow to CPU (CRITICAL for Render)
+# Force TensorFlow to CPU (IMPORTANT for Render)
 # --------------------------------------------------
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -17,35 +17,52 @@ from PIL import Image
 import io
 
 # --------------------------------------------------
-# App setup
+# App configuration
 # --------------------------------------------------
-app = Flask(__name__, static_folder=".")
-CORS(app)
+app = Flask(__name__)
+
+# Strong CORS (Flutter Web + Mobile + HTML)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --------------------------------------------------
-# Load Face Detector
+# Load Face Detector (OpenCV DNN)
 # --------------------------------------------------
 FACE_PROTO = "face_detector/deploy.prototxt"
 FACE_MODEL = "face_detector/res10_300x300_ssd_iter_140000_fp16.caffemodel"
 
+if not os.path.exists(FACE_PROTO) or not os.path.exists(FACE_MODEL):
+    raise FileNotFoundError("❌ Face detector files not found")
+
 face_net = cv2.dnn.readNetFromCaffe(FACE_PROTO, FACE_MODEL)
 
 # --------------------------------------------------
-# Load Emotion Model (LOAD ONCE)
+# Load Emotion Detection Model
 # --------------------------------------------------
 MODEL_PATH = "model/emotion_model.h5"
-emotion_model = load_model(MODEL_PATH, compile=False)
 
-emotions = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("❌ Emotion model not found")
+
+emotion_model = load_model(MODEL_PATH)
+
+emotions = [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Sad",
+    "Surprise",
+    "Neutral"
+]
 
 # --------------------------------------------------
-# Health check (Render needs this)
+# Health Check Route (REQUIRED for Render)
 # --------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "service": "LifePrint Emotion Detection API",
-        "status": "running"
+        "status": "running",
+        "service": "LifePrint Emotion Detection API"
     })
 
 # --------------------------------------------------
@@ -56,18 +73,23 @@ def test_page():
     return send_from_directory(".", "index.html")
 
 # --------------------------------------------------
-# Predict (POST only)
+# Emotion Prediction Route (POST ONLY)
 # --------------------------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     if "image" not in request.files:
-        return jsonify({"error": "Image file missing"}), 400
+        return jsonify({"error": "No image uploaded"}), 400
 
     try:
-        image = Image.open(io.BytesIO(request.files["image"].read())).convert("RGB")
-        img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        file = request.files["image"]
+
+        # Load image
+        img = Image.open(io.BytesIO(file.read())).convert("RGB")
+        img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
         h, w = img.shape[:2]
 
+        # Face detection
         blob = cv2.dnn.blobFromImage(
             img, 1.0, (300, 300), (104.0, 177.0, 123.0)
         )
@@ -78,9 +100,10 @@ def predict():
 
         for i in range(detections.shape[2]):
             confidence = float(detections[0, 0, i, 2])
+
             if confidence > 0.5:
                 box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                x1, y1, x2, y2 = box.astype(int)
+                x1, y1, x2, y2 = box.astype("int")
 
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(w, x2), min(h, y2)
@@ -89,13 +112,14 @@ def predict():
                 if face.size == 0:
                     continue
 
+                # Preprocess face
                 face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
                 face = cv2.resize(face, (48, 48))
                 face = face / 255.0
                 face = face.reshape(1, 48, 48, 1)
 
-                pred = emotion_model.predict(face, verbose=0)
-                emotion = emotions[int(np.argmax(pred))]
+                preds = emotion_model.predict(face, verbose=0)
+                emotion = emotions[int(np.argmax(preds))]
 
                 results.append({
                     "emotion": emotion,
@@ -111,8 +135,15 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 # --------------------------------------------------
-# OPTIONS for Flutter Web
+# OPTIONS handler (Flutter Web preflight)
 # --------------------------------------------------
 @app.route("/predict", methods=["OPTIONS"])
 def predict_options():
     return jsonify({}), 200
+
+# --------------------------------------------------
+# Local runner (Render uses Gunicorn)
+# --------------------------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
