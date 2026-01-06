@@ -11,7 +11,9 @@ import os
 # App configuration
 # --------------------------------------------------
 app = Flask(__name__)
-CORS(app)
+
+# ✅ FIX 1: Strong CORS for Flutter Web + Mobile
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --------------------------------------------------
 # Load Face Detector (OpenCV DNN)
@@ -107,6 +109,15 @@ def predict():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# --------------------------------------------------
+# ✅ FIX 2: OPTIONS handler for Flutter Web preflight
+# --------------------------------------------------
+@app.route("/predict", methods=["OPTIONS"])
+def predict_options():
+    return jsonify({}), 200
+
 
 # --------------------------------------------------
 # App Runner
