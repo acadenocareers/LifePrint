@@ -1,3 +1,12 @@
+# --------------------------------------------------
+# Force TensorFlow to CPU (IMPORTANT for Render)
+# --------------------------------------------------
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+# --------------------------------------------------
+# Imports
+# --------------------------------------------------
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import cv2
@@ -5,14 +14,13 @@ import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
 import io
-import os
 
 # --------------------------------------------------
 # App configuration
 # --------------------------------------------------
 app = Flask(__name__)
 
-# Strong CORS (Flutter Web + Mobile)
+# Strong CORS for Flutter Web + Mobile
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --------------------------------------------------
@@ -39,7 +47,7 @@ emotion_model = load_model(MODEL_PATH)
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 
 # --------------------------------------------------
-# Health Check Route (Render requires this)
+# Health Check Route (REQUIRED for Render)
 # --------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
@@ -49,11 +57,11 @@ def home():
     })
 
 # --------------------------------------------------
-# (Optional) HTML test page
+# HTML Test Page (Optional)
 # --------------------------------------------------
 @app.route("/test", methods=["GET"])
 def test_page():
-    return send_from_directory(".", "test_emotion.html")
+    return send_from_directory(".", "index.html")
 
 # --------------------------------------------------
 # Emotion Prediction Route
@@ -95,7 +103,7 @@ def predict():
                 if face.size == 0:
                     continue
 
-                # Preprocess face for emotion model
+                # Preprocess face
                 face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
                 face = cv2.resize(face, (48, 48))
                 face = face / 255.0
@@ -117,7 +125,6 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 # --------------------------------------------------
 # OPTIONS handler (Flutter Web preflight)
 # --------------------------------------------------
@@ -125,10 +132,8 @@ def predict():
 def predict_options():
     return jsonify({}), 200
 
-
 # --------------------------------------------------
-# App Runner (for local testing only)
-# Gunicorn on Render will handle production
+# App Runner (Local only – Render uses Gunicorn)
 # --------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
