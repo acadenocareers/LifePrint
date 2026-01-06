@@ -1,25 +1,28 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # <--- 1. IMPORT THIS
 import cv2
 import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
 import io
 
-app = Flask(__name__)
+app = Flask(_name_)
+CORS(app)  # <--- 2. ADD THIS LINE (Enables access from any device/web)
 
-# Load face detector
+# ... (Keep your existing face loading code) ...
 face_net = cv2.dnn.readNetFromCaffe(
     "face_detector/deploy.prototxt",
     "face_detector/res10_300x300_ssd_iter_140000_fp16.caffemodel"
 )
 
-# Load emotion model
+# ... (Keep your model loading code) ...
 emotion_model = load_model("model/emotion_model.h5")
 
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    # ... (Your existing predict logic remains exactly the same) ...
     file = request.files['image']
     img = Image.open(io.BytesIO(file.read()))
     img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -53,5 +56,5 @@ def predict():
 
     return jsonify(results)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if _name_ == "_main_":
+    app.run(debug=True)
