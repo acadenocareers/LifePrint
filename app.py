@@ -56,5 +56,5 @@ def predict():
 
     return jsonify(results)
 
-if _name_ == "_main_":
+if _name_ == "__name__":
     app.run(debug=True)
