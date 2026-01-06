@@ -5,74 +5,112 @@ import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
 import io
+import os
 
-# ✅ FIX 1: correct __name__
+# --------------------------------------------------
+# App configuration
+# --------------------------------------------------
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Load face detector
-face_net = cv2.dnn.readNetFromCaffe(
-    "face_detector/deploy.prototxt",
-    "face_detector/res10_300x300_ssd_iter_140000_fp16.caffemodel"
-)
+# --------------------------------------------------
+# Load Face Detector (OpenCV DNN)
+# --------------------------------------------------
+FACE_PROTO = "face_detector/deploy.prototxt"
+FACE_MODEL = "face_detector/res10_300x300_ssd_iter_140000_fp16.caffemodel"
 
-# ✅ Load emotion model
-emotion_model = load_model("model/emotion_model.h5")
+if not os.path.exists(FACE_PROTO) or not os.path.exists(FACE_MODEL):
+    raise FileNotFoundError("Face detector files not found")
+
+face_net = cv2.dnn.readNetFromCaffe(FACE_PROTO, FACE_MODEL)
+
+# --------------------------------------------------
+# Load Emotion Detection Model
+# --------------------------------------------------
+MODEL_PATH = "model/emotion_model.h5"
+
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("Emotion model not found")
+
+emotion_model = load_model(MODEL_PATH)
 
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 
-
-# ✅ Health check / home route (VERY IMPORTANT for Render)
-@app.route("/")
+# --------------------------------------------------
+# Health Check Route (IMPORTANT for Render)
+# --------------------------------------------------
+@app.route("/", methods=["GET"])
 def home():
-    return "LifePrint API is running"
+    return jsonify({
+        "status": "running",
+        "service": "LifePrint Emotion Detection API"
+    })
 
-
-# ✅ Prediction endpoint
+# --------------------------------------------------
+# Emotion Prediction Route
+# --------------------------------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     if "image" not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
 
-    file = request.files["image"]
+    try:
+        file = request.files["image"]
 
-    img = Image.open(io.BytesIO(file.read())).convert("RGB")
-    img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        # Read image
+        img = Image.open(io.BytesIO(file.read())).convert("RGB")
+        img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-    h, w = img.shape[:2]
-    blob = cv2.dnn.blobFromImage(img, 1.0, (300, 300), (104, 177, 123))
-    face_net.setInput(blob)
-    detections = face_net.forward()
+        h, w = img.shape[:2]
 
-    results = []
+        # Face detection
+        blob = cv2.dnn.blobFromImage(
+            img, 1.0, (300, 300), (104.0, 177.0, 123.0)
+        )
+        face_net.setInput(blob)
+        detections = face_net.forward()
 
-    for i in range(detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
+        results = []
 
-        if confidence > 0.5:
-            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-            x1, y1, x2, y2 = box.astype("int")
+        for i in range(detections.shape[2]):
+            confidence = float(detections[0, 0, i, 2])
 
-            face = img[y1:y2, x1:x2]
-            if face.size == 0:
-                continue
+            if confidence > 0.5:
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                x1, y1, x2, y2 = box.astype("int")
 
-            face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-            face = cv2.resize(face, (48, 48))
-            face = face / 255.0
-            face = face.reshape(1, 48, 48, 1)
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(w, x2), min(h, y2)
 
-            preds = emotion_model.predict(face, verbose=0)
-            emotion = emotions[np.argmax(preds)]
+                face = img[y1:y2, x1:x2]
+                if face.size == 0:
+                    continue
 
-            results.append({
-                "emotion": emotion,
-                "confidence": float(confidence)
-            })
+                # Preprocess face for emotion model
+                face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+                face = cv2.resize(face, (48, 48))
+                face = face / 255.0
+                face = face.reshape(1, 48, 48, 1)
 
-    return jsonify(results)
+                preds = emotion_model.predict(face, verbose=0)
+                emotion = emotions[int(np.argmax(preds))]
 
+                results.append({
+                    "emotion": emotion,
+                    "face_confidence": round(confidence, 3)
+                })
 
-# ✅ FIX 2: correct __name__ check
+        if len(results) == 0:
+            return jsonify({"message": "No face detected"}), 200
+
+        return jsonify(results), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --------------------------------------------------
+# App Runner
+# --------------------------------------------------
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
