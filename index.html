@@ -16,6 +16,7 @@
       padding: 25px;
       border-radius: 10px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      margin: auto;
     }
 
     h2 {
@@ -38,7 +39,12 @@
       font-size: 16px;
     }
 
-    button:hover {
+    button:disabled {
+      background: #9bbcf5;
+      cursor: not-allowed;
+    }
+
+    button:hover:not(:disabled) {
       background: #0056b3;
     }
 
@@ -56,7 +62,13 @@
       font-weight: bold;
       color: #2c3e50;
       text-align: center;
+      margin-top: 15px;
+    }
+
+    .status {
+      text-align: center;
       margin-top: 10px;
+      color: #555;
     }
   </style>
 </head>
@@ -67,8 +79,9 @@
 
     <input type="file" id="imageInput" accept="image/*" />
 
-    <button onclick="sendImage()">Detect Emotion</button>
+    <button id="detectBtn" onclick="sendImage()">Detect Emotion</button>
 
+    <div id="status" class="status"></div>
     <div id="emotionResult" class="emotion"></div>
     <div id="rawResult" class="result"></div>
   </div>
@@ -78,9 +91,12 @@
       const input = document.getElementById("imageInput");
       const emotionDiv = document.getElementById("emotionResult");
       const rawDiv = document.getElementById("rawResult");
+      const statusDiv = document.getElementById("status");
+      const button = document.getElementById("detectBtn");
 
       emotionDiv.innerText = "";
       rawDiv.innerText = "";
+      statusDiv.innerText = "";
 
       if (!input.files.length) {
         alert("Please select an image");
@@ -89,6 +105,9 @@
 
       const formData = new FormData();
       formData.append("image", input.files[0]);
+
+      button.disabled = true;
+      statusDiv.innerText = "Detecting emotion...";
 
       try {
         const response = await fetch(
@@ -101,10 +120,8 @@
 
         const data = await response.json();
 
-        // Show raw response
         rawDiv.innerText = JSON.stringify(data, null, 2);
 
-        // Handle response
         if (Array.isArray(data) && data.length > 0) {
           const emotions = data.map(item => item.emotion);
           emotionDiv.innerText = "Detected Emotion: " + emotions.join(", ");
@@ -112,13 +129,21 @@
         else if (data.message) {
           emotionDiv.innerText = data.message;
         } 
+        else if (data.error) {
+          emotionDiv.innerText = "Error: " + data.error;
+        } 
         else {
           emotionDiv.innerText = "No emotion detected";
         }
 
+        statusDiv.innerText = "Done ✅";
+
       } catch (error) {
         console.error(error);
-        emotionDiv.innerText = "Error connecting to API";
+        statusDiv.innerText = "";
+        emotionDiv.innerText = "❌ Error connecting to API";
+      } finally {
+        button.disabled = false;
       }
     }
   </script>
