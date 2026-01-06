@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import cv2
 import numpy as np
@@ -12,7 +12,7 @@ import os
 # --------------------------------------------------
 app = Flask(__name__)
 
-# ✅ FIX 1: Strong CORS for Flutter Web + Mobile
+# Strong CORS (Flutter Web + Mobile)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --------------------------------------------------
@@ -39,7 +39,7 @@ emotion_model = load_model(MODEL_PATH)
 emotions = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
 
 # --------------------------------------------------
-# Health Check Route (IMPORTANT for Render)
+# Health Check Route (Render requires this)
 # --------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
@@ -47,6 +47,13 @@ def home():
         "status": "running",
         "service": "LifePrint Emotion Detection API"
     })
+
+# --------------------------------------------------
+# (Optional) HTML test page
+# --------------------------------------------------
+@app.route("/test", methods=["GET"])
+def test_page():
+    return send_from_directory(".", "test_emotion.html")
 
 # --------------------------------------------------
 # Emotion Prediction Route
@@ -99,10 +106,10 @@ def predict():
 
                 results.append({
                     "emotion": emotion,
-                    "face_confidence": round(confidence, 3)
+                    "confidence": round(confidence, 3)
                 })
 
-        if len(results) == 0:
+        if not results:
             return jsonify({"message": "No face detected"}), 200
 
         return jsonify(results), 200
@@ -112,7 +119,7 @@ def predict():
 
 
 # --------------------------------------------------
-# ✅ FIX 2: OPTIONS handler for Flutter Web preflight
+# OPTIONS handler (Flutter Web preflight)
 # --------------------------------------------------
 @app.route("/predict", methods=["OPTIONS"])
 def predict_options():
@@ -120,8 +127,9 @@ def predict_options():
 
 
 # --------------------------------------------------
-# App Runner
+# App Runner (for local testing only)
+# Gunicorn on Render will handle production
 # --------------------------------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
